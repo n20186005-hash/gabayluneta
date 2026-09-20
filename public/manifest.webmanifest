@@ -1,0 +1,36 @@
+{
+  "name": "Bantayog ni José Rizal — Gabay sa Luneta, Maynila",
+  "short_name": "Gabay Luneta",
+  "description": "Gabay sa pagbisita sa Bantayog ni José Rizal (José Rizal Monument) sa Luneta, Maynila, Kalakhang Maynila, Pilipinas — kasaysayan, oras, lokasyon, mapa at mga kalapit na pasyalan.",
+  "lang": "fil",
+  "dir": "ltr",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f0e6",
+  "theme_color": "#10263a",
+  "categories": ["travel", "navigation", "education"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

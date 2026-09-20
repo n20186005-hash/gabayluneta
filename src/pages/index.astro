@@ -2,8 +2,177 @@
 import '../styles/global.css';
 
 const canonicalUrl = Astro.site ? new URL(Astro.url.pathname, Astro.site).toString() : undefined;
+const siteUrl = (canonicalUrl ?? 'https://gabayluneta.com').replace(/\/+$/, '');
 const ogImageUrl = Astro.site ? new URL('/og-image.jpg', Astro.site).toString() : '/og-image.jpg';
+const heroImageUrl = Astro.site ? new URL('/images/rizal-monument-front.jpg', Astro.site).toString() : '/images/rizal-monument-front.jpg';
 const mapUrl = 'https://www.google.com/maps?q=14.5817917,120.9770458&z=17&output=embed&hl=fil&gl=PH';
+
+/* Single-attraction SEO entity binding — gabayluneta.com */
+const entity = {
+  domain: 'gabayluneta.com',
+  fullName: 'Bantayog ni José Rizal',
+  officialEnglishName: 'José Rizal Monument',
+  shortName: 'Luneta',
+  parkName: 'Rizal Park (Luneta)',
+  city: 'Maynila',
+  region: 'Kalakhang Maynila',
+  country: 'Pilipinas',
+  countryCode: 'PH',
+  postalCode: '1000',
+  streetAddress: '1225 Roxas Boulevard, Ermita',
+  latitude: 14.5817917,
+  longitude: 120.9770458,
+  mapsShareUrl: 'https://maps.app.goo.gl/FoCBsLYeuxtmVA8W6',
+  govtTourismUrl: 'https://npdc.gov.ph/rizal-monument/',
+  nearbyLandmark1: 'National Museum of Anthropology',
+  nearbyLandmark2: 'Intramuros'
+};
+
+/* Rating at review — naka-sync mula sa Google Maps (Setyembre 2026) */
+const rating = {
+  value: 4.6,
+  best: 5,
+  count: 3201,
+  source: 'Google Maps',
+  syncedLabel: 'Setyembre 2026'
+};
+const ratingCountLabel = rating.count.toLocaleString('en-US');
+const reviewSourceNote = `Naka-sync mula sa mga review ng user sa Google Maps, oras ng pag-sync: ${rating.syncedLabel}; ang copyright ay pagmamay-ari ng mga orihinal na may-akda at ng Google Maps.`;
+const reviewInlineNote = `Rating at bilang ng review ay naka-sync mula sa mga review ng user sa Google Maps (Google Maps) · ${rating.syncedLabel}`;
+
+/* ---------- Panahon ---------- */
+/* Kinukuha sa server (build / render time) mula sa Open-Meteo at naka-cache ng 15 minuto. */
+const weatherApiUrl =
+  'https://api.open-meteo.com/v1/forecast' +
+  '?latitude=14.5818&longitude=120.977' +
+  '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m' +
+  '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max' +
+  '&timezone=Asia%2FManila&forecast_days=7';
+
+interface WeatherCurrent {
+  temperature_2m: number;
+  relative_humidity_2m: number;
+  apparent_temperature: number;
+  is_day: number;
+  precipitation: number;
+  weather_code: number;
+  wind_speed_10m: number;
+}
+
+interface WeatherDaily {
+  time: string[];
+  weather_code: number[];
+  temperature_2m_max: number[];
+  temperature_2m_min: number[];
+  precipitation_probability_max?: number[];
+}
+
+interface WeatherPayload {
+  current?: WeatherCurrent;
+  daily?: WeatherDaily;
+}
+
+const weatherCodeText: Record<number, string> = {
+  0: 'Maliwanag',
+  1: 'Halos maliwanag',
+  2: 'Bahagyang maulap',
+  3: 'Maulap',
+  45: 'Makapal na hamog',
+  48: 'Makapal na hamog',
+  51: 'Magaang ambon',
+  53: 'Ambon',
+  55: 'Makapal na ambon',
+  56: 'Malamig na ambon',
+  57: 'Makapal na ambon',
+  61: 'Magaang ulan',
+  63: 'Ulan',
+  65: 'Malakas na ulan',
+  66: 'Malamig na ulan',
+  67: 'Malakas na ulan',
+  80: 'Magaang pag-ulan',
+  81: 'Pag-ulan',
+  82: 'Malakas na pag-ulan',
+  85: 'Pag-ulan',
+  86: 'Malakas na pag-ulan',
+  95: 'Pagkulog at pagkidlat',
+  96: 'Kulog at malakas na ulan',
+  99: 'Kulog at malakas na ulan'
+};
+
+function describeWeatherCode(code: number) {
+  return weatherCodeText[code] || 'Hindi tiyak ang lagay';
+}
+
+let weatherCachePayload: WeatherPayload | null = null;
+let weatherCacheStamp = 0;
+const WEATHER_CACHE_MS = 15 * 60 * 1000;
+
+async function loadWeather() {
+  if (weatherCachePayload && Date.now() - weatherCacheStamp < WEATHER_CACHE_MS) return weatherCachePayload;
+  try {
+    const response = await fetch(weatherApiUrl);
+    if (!response.ok) return null;
+    const payload = (await response.json()) as WeatherPayload;
+    weatherCachePayload = payload;
+    weatherCacheStamp = Date.now();
+    return payload;
+  } catch (error) {
+    return null;
+  }
+}
+
+const weatherRaw = await loadWeather();
+
+const weekdayFormatter = new Intl.DateTimeFormat('fil-PH', { timeZone: 'Asia/Manila', weekday: 'short' });
+const dayDateFormatter = new Intl.DateTimeFormat('fil-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+const stampFormatter = new Intl.DateTimeFormat('fil-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' });
+
+const weatherDays = weatherRaw && weatherRaw.daily && Array.isArray(weatherRaw.daily.time)
+  ? weatherRaw.daily.time.map(function (day, index) {
+      const dayDate = new Date(day + 'T00:00:00+08:00');
+      const probability = weatherRaw.daily.precipitation_probability_max
+        ? weatherRaw.daily.precipitation_probability_max[index]
+        : null;
+      return {
+        weekday: weekdayFormatter.format(dayDate),
+        date: dayDateFormatter.format(dayDate),
+        max: Math.round(weatherRaw.daily.temperature_2m_max[index]),
+        min: Math.round(weatherRaw.daily.temperature_2m_min[index]),
+        probability: probability,
+        text: describeWeatherCode(weatherRaw.daily.weather_code[index]),
+        umbrella: probability !== null && probability >= 50
+      };
+    })
+  : [];
+
+const weatherNow = weatherRaw && weatherRaw.current
+  ? {
+      hasData: true,
+      temp: Math.round(weatherRaw.current.temperature_2m),
+      feels: Math.round(weatherRaw.current.apparent_temperature),
+      humidity: Math.round(weatherRaw.current.relative_humidity_2m),
+      wind: Math.round(weatherRaw.current.wind_speed_10m),
+      rain: Number(weatherRaw.current.precipitation).toFixed(1),
+      text: describeWeatherCode(weatherRaw.current.weather_code)
+    }
+  : { hasData: false, temp: '—', feels: '—', humidity: '—', wind: '—', rain: '—', text: 'Hindi pa available' };
+
+const todayProbability = weatherDays.length ? weatherDays[0].probability : null;
+const umbrellaAdvice =
+  todayProbability === null
+    ? 'Suriin ang pinakabagong ulat bago lumabas; madalas ang biglaang pag-ulan sa hapon.'
+    : todayProbability >= 50
+      ? 'Magdala ng payong — may ' + todayProbability + '% na tsansa ng ulan ngayon.'
+      : 'Mababa ang tsansa ng ulan (' + todayProbability + '%). Payong ay opsyonal; tubig at lilim ang mahalaga.';
+const weatherStampLabel = stampFormatter.format(new Date());
+
+const weatherDayCards = weatherDays.map(function (day) {
+  return Object.assign({}, day, {
+    rainLabel:
+      (day.umbrella ? 'Magdala ng payong' : 'Payong: opsyonal') +
+      (day.probability !== null ? ' · ' + day.probability + '% ulan' : '')
+  });
+});
 
 const faqItems = [
   {
@@ -29,28 +198,301 @@ const faqItems = [
   {
     question: 'Pwede bang kumuha ng litrato?',
     answer: 'Oo para sa karaniwang personal na pagkuha ng larawan sa pampublikong bahagi ng parke. Igalang ang mga nakatalagang guwardiya, ceremonial areas, pansamantalang harang, at anumang kasalukuyang abiso ng NPDC.'
+  },
+  {
+    question: 'Saan eksaktong matatagpuan ang Bantayog ni José Rizal?',
+    answer: 'Nasa 1225 Roxas Boulevard, Ermita, Maynila 1000, Kalakhang Maynila, Pilipinas ang Bantayog ni José Rizal, sa loob ng Rizal Park (Luneta).'
+  },
+  {
+    question: 'Libre bang bisitahin ang Luneta at ang monumento?',
+    answer: 'Oo. Pampublikong parke ang Rizal Park (Luneta) at karaniwang libre ang pagpasok sa Bantayog ni José Rizal buong taon; walang hiwalay na ticket para sa monumento mismo.'
+  },
+  {
+    question: 'Accessible ba ang Luneta para sa wheelchair, stroller, at matatanda?',
+    answer: 'Ang pangunahing daanan sa paligid ng monumento ay patag at sementado, kaya karaniwang kayang tahakin ng wheelchair at stroller. Maglaan ng dagdag na oras, humanap ng lilim at bangko, at isaalang-alang ang mas maikling ruta sa tanghali.'
+  },
+  {
+    question: 'Ano ang gagawin kung umulan habang nasa Luneta?',
+    answer: 'Lumipat sa mga museo sa gilid ng parke o sa malalapit na mall at hotel, pagkatapos ay bumalik kapag humupa ang ulan. Iwasan ang mga bukas na lawn tuwing may kulog at kidlat, at suriin ang abiso ng PAGASA bago magtungo sa Maynila.'
+  },
+  {
+    question: 'May banyo, inumin, at lilim ba sa paligid ng monumento?',
+    answer: 'May mga pampublikong banyo, bangko, at punong nagtatabing sa loob at paligid ng Rizal Park, at mga convenience store sa mga kalapit na kalsada. Magdala pa rin ng sariling tubig, tissue, at payong dahil nag-iiba ang oras ng serbisyo.'
   }
+];
+
+/* ---------- Kasaysayan: kronolohiya at kuwento ---------- */
+const timeline = [
+  {
+    year: '1896',
+    title: 'Pagbaril sa Bagumbayan',
+    text: 'Si Dr. José Rizal ay binaril sa Bagumbayan field noong 30 Disyembre 1896. Ang pook na ito ay bahagi na ngayon ng Luneta at ng mas malawak na pambansang alaala.'
+  },
+  {
+    year: '1901–1912',
+    title: 'Mula batas tungong bantayog',
+    text: 'Iniatas ng Act No. 243 ang pagpapatayo ng pambansang bantayog. Dumaan ito sa proseso ng disenyo at pagpapatayo; ang panukala ng Swiss sculptor na si Dr. Richard Kissling ang isinakatuparan.'
+  },
+  {
+    year: '1913',
+    title: 'Pagbubunyag at paglilibing',
+    text: 'Inilantad ang monumento sa taong ito at inilipat ang mga labi ni Rizal sa ilalim nito — kaya hindi lamang alaala ang bantayog, kundi himlayan din.'
+  },
+  {
+    year: '1945',
+    title: 'Labanan sa Maynila',
+    text: 'Labis na napinsala ang malaking bahagi ng Maynila at ang paligid ng Luneta noong Ikalawang Digmaang Pandaigdig. Nanatili ang bantayog bilang palatandaan ng lugar.'
+  },
+  {
+    year: '2013',
+    title: 'Sentenaryo ng monumento',
+    text: 'Ang ika-100 taon ng bantayog ay naging okasyon ng mas malawak na pagtalakay sa kasaysayan, konserbasyon, at papel ng Luneta sa pampublikong espasyo ng Maynila.'
+  }
+];
+
+const storyNotes = [
+  {
+    label: 'Motto Stella',
+    title: 'Ang “gumagabay na bituin”',
+    text: 'Ang monumento ay tinawag na Motto Stella — “guiding star.” Sa pagpapakahulugan dito, ang anyo ng bantayog ay hindi lamang alaala sa isang tao kundi isang palatandaang tumuturo sa direksiyon ng bansa.'
+  },
+  {
+    label: 'Ang Huling Paalam',
+    title: 'Mi último adiós',
+    text: 'Bago ang pagbaril, isinulat ni Rizal ang tula na kilala bilang “Mi último adiós.” Bahagi ito ng dahilan kung bakit ang lugar ng pagkamatay ay naging sentro ng pambansang gunita.'
+  },
+  {
+    label: 'Paniniwala at ebidensya',
+    title: 'Kuwentong bayan laban sa napatunayan',
+    text: 'Maraming kwentong bayan ang nakapalibot sa lugar — kabilang ang palagay na ang mismong pook ay siyang kinaroroonan ng pagbaril. Para sa mga tiyak na detalye, mas mainam na sundin ang mga nakasulat na sanggunian ng NPDC at NHCP.'
+  }
+];
+
+/* ---------- Pasilidad (uri lamang, walang partikular na establisyimento) ---------- */
+const facilityGroups = [
+  {
+    label: 'Banyo',
+    title: 'Pampublikong banyo at hugasan',
+    text: 'May mga pampublikong banyo sa loob at paligid ng parke. Maaaring may maliit na bayad at nag-iiba ang oras ng serbisyo, kaya magdala ng sariling tissue at hand sanitizer.'
+  },
+  {
+    label: 'Inumin',
+    title: 'Tubig na maiinom at refill',
+    text: 'Limitado ang pampublikong gripo. Pinakapraktikal ang magdala ng sariling bote at mag-refill bago pumasok; may mga convenience store sa paligid para sa inumin at meryenda.'
+  },
+  {
+    label: 'Lilim',
+    title: 'Lilim, bangko at pahingahan',
+    text: 'Ang mga puno sa parke at mga bangko sa gilid ng daanan ang pangunahing pahingahan. Sa tanghali, mas mainam ang maikling loop na may madalas na hinto sa lilim.'
+  },
+  {
+    label: 'Kainan',
+    title: 'Mga uri ng kainan sa paligid',
+    text: 'Karaniwang pagpipilian: mga karinderya at maliit na kainan sa Ermita, café at restaurant sa Roxas Boulevard, food court sa malalapit na mall, at hotel dining para sa mas mahabang pagkain. Pumili ayon sa oras, badyet at dietary need — hindi ayon sa partikular na pangalan ng establisyimento.'
+  },
+  {
+    label: 'Panuluyan',
+    title: 'Mga uri ng matutuluyan',
+    text: 'May mga hotel, mid-range inn, at budget lodging sa Ermita, Malate, at kahabaan ng Taft Avenue at Roxas Boulevard. Para sa madaling commute, pumili ng matutuluyang malapit sa istasyon ng LRT-1.'
+  },
+  {
+    label: 'Tindahan',
+    title: 'Convenience store, grocery at parmasya',
+    text: 'Ang mga convenience store at maliit na grocery ay nasa mga pangunahing kalsada; ang mas malaking supermarket at parmasya ay karaniwang nasa loob ng mga kalapit na mall.'
+  },
+  {
+    label: 'Gasolina at kuryente',
+    title: 'Gasolinahan at EV charging',
+    text: 'Ang mga gasolinahan ay nasa mga pangunahing kalsada papuntang Ermita at sa kahabaan ng Roxas Boulevard. Ang mga charger para sa de-kuryenteng sasakyan ay karaniwang nasa loob ng mall, hotel, o commercial building — suriin ang availability sa mismong araw.'
+  },
+  {
+    label: 'Pangkalusugan',
+    title: 'First aid, seguridad at ospital',
+    text: 'May seguridad at first-aid point sa parke para sa agarang pangangailangan; ang mas malalaking ospital ng Maynila ay maikling biyahe mula sa Luneta.'
+  },
+  {
+    label: 'Pera',
+    title: 'ATM at cash',
+    text: 'Ang mga ATM ay nakapaligid sa Taft Avenue at sa mga mall. Magtabi ng cash para sa maliit na bayad sa banyo, pamasahe sa jeepney, at meryenda.'
+  }
+];
+
+/* ---------- Transportasyon (detalyado) ---------- */
+const transportDetails = [
+  {
+    label: 'Mula sa paliparan',
+    title: 'NAIA Terminal 1 / 2 / 3 papuntang Luneta',
+    text: 'Para sa bisitang may bagahe, pinakamadali ang door-to-door na taxi o ride-hailing papuntang “Rizal Monument, Roxas Boulevard, Ermita.” Kung pampublikong transportasyon, ang karaniwang kombinasyon ay airport shuttle / point-to-point bus papuntang bahagi ng Maynila, pagkatapos ay LRT-1 o jeepney papuntang T.M. Kalaw at Rizal Park. Maglaan ng dagdag na oras tuwing rush hour.'
+  },
+  {
+    label: 'Pampublikong transportasyon',
+    title: 'LRT-1, jeepney at city bus',
+    text: 'Pinakamalinaw na ruta: LRT-1 papuntang United Nations Avenue station sa Taft Avenue, pagkatapos ay lakad pakanluran patungong T.M. Kalaw at Rizal Park. Alternatibo ay mga jeepney at city bus na dumadaan sa Taft Avenue, T.M. Kalaw, Mabini, at Roxas Boulevard. Sabihin sa drayber ang “Luneta” o “Rizal Monument.”'
+  },
+  {
+    label: 'Taxi at ride-hailing',
+    title: 'Pinakasimple para sa grupo',
+    text: 'I-pin ang “Rizal Monument” at ibigay ang address na 1225 Roxas Boulevard, Ermita, Maynila 1000. Kapag may malaking programa sa Luneta, maaaring ilipat ang drop-off sa kalapit na kalsada, kaya maglaan ng dagdag na lakad.'
+  },
+  {
+    label: 'Pagmamaneho at paradahan',
+    title: 'Roxas Boulevard, drop-off at plan B',
+    text: 'Walang malaking dedicated visitor lot sa mismong paanan ng monumento. Ang mga uri ng paradahan sa paligid ay: paid open lot, paradahan ng hotel at commercial building, at paradahan ng mall. Dumating nang mas maaga tuwing may event dahil mabilis mapuno ang paligid.'
+  }
+];
+
+/* ---------- Estratehiya bawat quarter (klimang karaniwan ng Maynila) ---------- */
+const quarters = [
+  {
+    quarter: 'Q1 · Enero–Marso',
+    climate: 'Tuyo at bahagyang mas malamig; karaniwang 24–33 °C.',
+    crowd: 'Mataas tuwing weekend at holiday.',
+    tip: 'Pinakamainam para sa buong araw na lakad. Magdala pa rin ng tubig at sumbrero.'
+  },
+  {
+    quarter: 'Q2 · Abril–Hunyo',
+    climate: 'Pinakamainit na bahagi ng taon; sa huling bahagi ay pasok na ang tag-ulan.',
+    crowd: 'Mataas tuwing Semana Santa at summer break.',
+    tip: 'Pumunta bago mag-9:00 AM o pagkalipas ng 4:00 PM. Magdala ng payong at dagdag na tubig.'
+  },
+  {
+    quarter: 'Q3 · Hulyo–Setyembre',
+    climate: 'Tag-ulan at southwest monsoon; madalas na pag-ulan sa hapon at paminsang bagyo.',
+    crowd: 'Mababa hanggang katamtaman.',
+    tip: 'Unahin ang mga museo, panatilihing tuyo ang gamit, at suriin ang abiso ng PAGASA bago bumiyahe.'
+  },
+  {
+    quarter: 'Q4 · Oktubre–Disyembre',
+    climate: 'Paglipat sa mas tuyo at bahagyang mas malamig; Disyembre ang pinakakaaya-aya.',
+    crowd: 'Mataas sa Disyembre at holiday season.',
+    tip: 'Magandang panahon para sa sunset at larawan; asahan ang mas maraming tao at mas mahabang pila sa sasakyan.'
+  }
+];
+
+/* ---------- Ruta ayon sa uri ng bisita ---------- */
+const personaRoutes = [
+  {
+    label: 'Pamilya na may bata',
+    duration: '2.5–3 oras',
+    stops: 'Monument grounds → lilim na lawn at bangko → maikling pagbisita sa museo → meryenda bago umalis',
+    tip: 'Iwasan ang tanghali. Magtakda ng madalas na hinto sa lilim at dalhin ang sariling tubig.'
+  },
+  {
+    label: 'Potograpiya at kalikasan',
+    duration: '2–3 oras (sunrise o golden hour)',
+    stops: 'Frontal na tanawin ng bantayog → side light sa granite at bronze → mga puno at lawn → sunset sa Manila Bay',
+    tip: 'Ang pinakamagandang liwanag ay madalas bago mag-9:00 AM at huling bahagi ng hapon. Suriin ang kasalukuyang patakaran para sa tripod at drone.'
+  },
+  {
+    label: 'Mababang lakas / accessible',
+    duration: '45–60 minuto',
+    stops: 'Drop-off malapit sa pasukan → patag at sementadong loop sa monumento → bangko sa lilim → paglabas',
+    tip: 'Pumili ng patag na daanan at bangko; umiwas sa oras na matao at mainit. Magtanong sa park staff para sa pinakamaikling accessible na ruta.'
+  }
+];
+
+const halfDayPlan = [
+  { time: '08:30', title: 'Monument grounds', text: 'Basahin ang mga simbolo habang sariwa pa ang hangin at banayad ang liwanag.' },
+  { time: '09:30', title: 'Mga hardin at marker ng parke', text: 'Maglakad sa mga garden space at memorial marker na nakalista ng NPDC.' },
+  { time: '10:30', title: 'Museo sa gilid ng parke', text: 'Pumili ng isang museo para sa konteksto ng kasaysayan at kultura.' },
+  { time: '12:00', title: 'Tanghali sa lilim', text: 'Magpahinga, uminom ng tubig, at kumain bago magpatuloy o umalis.' }
+];
+
+const fullDayPlan = [
+  { time: '08:00', title: 'Bantayog ni José Rizal', text: 'Simulan sa monumento bago tumindi ang init.' },
+  { time: '09:30', title: 'National Museum complex', text: 'Pumili ng isa hanggang dalawang museo para sa mas malalim na konteksto.' },
+  { time: '12:00', title: 'Tanghali at pahinga', text: 'Humanap ng lilim o indoor na kainan; mag-rehydrate bago maglakad muli.' },
+  { time: '14:00', title: 'Intramuros', text: 'Tumawid sa Walled City para sa mga pader, simbahan, at heritage streets.' },
+  { time: '17:00', title: 'Sunset sa Manila Bay', text: 'Tapusin ang araw sa baybayin at sa huling liwanag ng hapon.' }
+];
+
+/* ---------- Agham at responsibilidad ng bisita ---------- */
+const scienceNotes = [
+  {
+    label: 'Materyal',
+    title: 'Granite at bronze sa klimang tropikal',
+    text: 'Ang bantayog ay gawa sa granite at bronze. Ang granite ay matigas na igneous na bato na angkop sa panlabas na monumento; ang bronze ay haluang metal na may kakayahang tumagal sa ulan at init. Ang hangin na may halo ng asin mula sa Manila Bay at ang mataas na halumigmig ay natural na nagpapabago sa ibabaw ng metal — kaya mahalaga ang regular na pagpapanatili.'
+  },
+  {
+    label: 'Heograpiya',
+    title: 'Baybayin, mababang lupain at init ng lungsod',
+    text: 'Ang Luneta ay nasa tabi ng Manila Bay at mababang bahagi ng Maynila, kaya ramdam ang init at halumigmig ng dagat. Bilang isa sa mga natitirang malawak na berdeng espasyo ng lungsod, nakatutulong ang parke sa pagpapababa ng urban heat island effect sa paligid nito.'
+  },
+  {
+    label: 'Ekolohiya',
+    title: 'Mga puno, ibon at pollinator',
+    text: 'Ang mga punong nagtatabing at lawn ng parke ay tirahan ng mga karaniwang ibon sa lungsod at ng mga pollinator. Ang lilim na ibinibigay nila ay bahagi rin ng kaginhawahan ng mga bisita tuwing mainit na bahagi ng araw.'
+  },
+  {
+    label: 'Tubig at pagbaha',
+    title: 'Ulan, drainage at monsoon',
+    text: 'Tuwing tag-ulan at high tide, mabilis mapuno ang drainage sa mababang bahagi ng lungsod. Maaaring magbago ang lagay ng mga daanan at lawn pagkatapos ng malakas na ulan, kaya suriin ang sitwasyon sa mismong araw ng pagbisita.'
+  }
+];
+
+const visitorResponsibilities = [
+  'Huwag umakyat o sumandal sa monumento at sa mga plake; ang paulit-ulit na paghipo ay nagpapabilis ng pagkasira ng bato at metal.',
+  'Igala ang mga nakatalagang guwardiya, ceremonial area at pansamantalang harang — may mga bahagi ng parke na ginagamit para sa opisyal na seremonya.',
+  'Dalhin ang sariling basura hanggang sa makakita ng tamang tapunan; iwan ang pampublikong espasyo nang mas maayos kaysa sa pagdating mo.',
+  'Huwag magpakain o manggulo sa mga hayop sa parke, at iwasan ang paglapit nang labis sa mga puno at halaman.',
+  'Bawasan ang ingay at ilayo ang malalakas na speaker; maraming bisita ang pumupunta para sa tahimik na paggunita.',
+  'Suriin ang kasalukuyang patakaran ng NPDC para sa drone, tripod, at komersyal na pagkuha ng larawan bago magtungo.'
 ];
 
 const attractionJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'TouristAttraction',
-  name: 'Bantayog ni José Rizal',
-  alternateName: ['Rizal Monument', 'Motto Stella'],
-  description: 'Ang pambansang bantayog at himlayan ni Dr. José Rizal sa Rizal Park, Luneta, Maynila.',
-  ...(canonicalUrl ? { url: canonicalUrl, image: [new URL('/images/rizal-monument-front.jpg', Astro.site!).toString()] } : {}),
+  '@id': `${siteUrl}/#attraction`,
+  name: entity.fullName,
+  alternateName: [
+    entity.shortName,
+    entity.officialEnglishName,
+    `${entity.city} ${entity.fullName}`,
+    'Motto Stella'
+  ],
+  additionalType: 'https://schema.org/LandmarksOrHistoricalBuildings',
+  description: `Komprehensibong gabay-pasyal sa ${entity.fullName} sa ${entity.shortName}, ${entity.city}, ${entity.region}, ${entity.country}: kasaysayan, kronolohiya, oras ng pagbubukas, panahon, ruta, transportasyon, at mga kalapit na pasyalan.`,
+  inLanguage: 'fil',
+  url: siteUrl,
+  image: [heroImageUrl],
+  photo: [
+    { '@type': 'ImageObject', url: heroImageUrl, caption: `${entity.fullName} — harapang tanawin ng granite at bronze sa ${entity.shortName}`, creditText: 'National Parks Development Committee (NPDC)', license: entity.govtTourismUrl },
+    { '@type': 'ImageObject', url: `${siteUrl}/images/rizal-monument-flags.jpg`, caption: `${entity.fullName} — napapalibutan ng mga watawat ng Pilipinas`, creditText: 'National Parks Development Committee (NPDC)', license: entity.govtTourismUrl },
+    { '@type': 'ImageObject', url: `${siteUrl}/images/rizal-monument-sunset.jpg`, caption: `${entity.fullName} — huling liwanag ng hapon sa ${entity.shortName}`, creditText: 'National Parks Development Committee (NPDC)', license: entity.govtTourismUrl },
+    { '@type': 'ImageObject', url: `${siteUrl}/images/rizal-monument-garden.jpg`, caption: `Mga hardin at bakuran ng ${entity.parkName}`, creditText: 'National Parks Development Committee (NPDC)', license: entity.govtTourismUrl }
+  ],
+  isAccessibleForFree: true,
+  publicAccess: true,
+  touristType: [
+    'Pamilya na may bata',
+    'Potograpiya at kalikasan',
+    'Kasaysayan at heritage walk',
+    'Mababang lakas / accessible na ruta'
+  ],
+  amenityFeature: [
+    { '@type': 'LocationFeatureSpecification', name: 'Libreng pasok sa monumento at bakuran', value: true },
+    { '@type': 'LocationFeatureSpecification', name: 'Patag at sementadong daanan para sa wheelchair at stroller', value: true },
+    { '@type': 'LocationFeatureSpecification', name: 'Lilim, bangko at lawn bilang pahingahan', value: true },
+    { '@type': 'LocationFeatureSpecification', name: 'Pampublikong banyo sa loob at paligid ng parke', value: 'Maaaring may maliit na bayad; nag-iiba ang oras ng serbisyo' }
+  ],
+  containedInPlace: {
+    '@type': 'TouristAttraction',
+    name: entity.parkName,
+    url: 'https://npdc.gov.ph/rizal-park/'
+  },
+  hasMap: entity.mapsShareUrl,
   address: {
     '@type': 'PostalAddress',
-    streetAddress: '1225 Roxas Boulevard, Ermita',
-    addressLocality: 'Manila',
-    addressRegion: 'Metro Manila',
-    postalCode: '1000',
-    addressCountry: 'PH'
+    streetAddress: entity.streetAddress,
+    addressLocality: entity.city,
+    addressRegion: entity.region,
+    postalCode: entity.postalCode,
+    addressCountry: entity.countryCode
   },
   geo: {
     '@type': 'GeoCoordinates',
-    latitude: 14.5817917,
-    longitude: 120.9770458
+    latitude: entity.latitude,
+    longitude: entity.longitude
   },
   openingHoursSpecification: [
     {
@@ -68,16 +510,50 @@ const attractionJsonLd = {
       closes: '22:00'
     }
   ],
-  aggregateRating: {
-    '@type': 'AggregateRating',
-    ratingValue: 4.6,
-    bestRating: 5,
-    ratingCount: 233
-  },
-  isAccessibleForFree: true,
-  sameAs: ['https://npdc.gov.ph/rizal-monument/']
+  sameAs: [
+    entity.mapsShareUrl,
+    entity.govtTourismUrl,
+    'https://philhistoricsites.nhcp.gov.ph/registry_database/jose-rizal-national-monument-1913/'
+  ]
 };
 
+const breadcrumbJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Gabay Luneta', item: siteUrl },
+    { '@type': 'ListItem', position: 2, name: entity.fullName, item: `${siteUrl}/#attraction` }
+  ]
+};
+
+/* Non-profit publisher at website entity — para sa mas malinaw na pinagmumulan ng impormasyon. */
+const siteJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': `${siteUrl}/#organization`,
+      name: 'Gabay Luneta',
+      description: `Independente at hindi kumikitang gabay-pasyal para sa ${entity.fullName} sa ${entity.city}, ${entity.country}. Hindi ito opisyal na website ng NPDC, NHCP, o ng Pamahalaan ng Pilipinas.`,
+      url: siteUrl,
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteUrl}/logo.svg`
+      }
+    },
+    {
+      '@type': 'WebSite',
+      '@id': `${siteUrl}/#website`,
+      url: siteUrl,
+      name: 'Gabay Luneta',
+      inLanguage: 'fil',
+      publisher: { '@id': `${siteUrl}/#organization` },
+      about: { '@id': `${siteUrl}/#attraction` }
+    }
+  ]
+};
+
+/* Ang rating at mga review ay IPINAPAKITA LAMANG SA PAHINA — hindi isinasama sa JSON-LD. */
 const faqJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'FAQPage',
@@ -98,23 +574,40 @@ const faqJsonLd = {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <meta name="theme-color" content="#10263a" />
-    <meta name="description" content="Gabay sa pagbisita sa Bantayog ni José Rizal sa Luneta, Maynila — kasaysayan, oras, pamasahe, parking, pagkain, mapa at mga kalapit na pasyalan." />
-    <title>Bantayog ni José Rizal | Gabay sa Luneta, Maynila</title>
+    <meta name="description" content={`Libreng pasok sa ${entity.fullName} sa ${entity.shortName}, ${entity.city}: oras ng pagbubukas, ruta mula LRT-1 at NAIA, mapa, panahon ngayon, at kasaysayan ng monumento. Planuhin ang pagdalaw dito.`} />
+    <title>{`${entity.fullName} sa ${entity.shortName}: Oras, Ruta at Kasaysayan | Gabay Luneta`}</title>
     {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+    <link rel="alternate" hreflang="fil-PH" href={siteUrl} />
+    <link rel="alternate" hreflang="x-default" href={siteUrl} />
+    <meta name="geo.region" content="PH" />
+    <meta name="geo.placename" content="Maynila, Kalakhang Maynila, Pilipinas" />
+    <meta name="ICBM" content="14.5817917, 120.9770458" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Gabay Luneta" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Gabay Luneta" />
     <meta property="og:locale" content="fil_PH" />
-    <meta property="og:title" content="Bantayog ni José Rizal | Gabay sa Luneta" />
-    <meta property="og:description" content="Isang malinaw at makasaysayang gabay sa pagbisita sa Motto Stella sa puso ng Luneta." />
+    <meta property="og:title" content={`${entity.fullName} sa ${entity.shortName}, ${entity.city} — Oras, Ruta at Kasaysayan`} />
+    <meta property="og:description" content={`Libreng pasok · 5:00 AM–10:00 PM araw-araw · ruta mula LRT-1 United Nations Avenue at NAIA · mapa, panahon ngayon, at kasaysayan ng Motto Stella.`} />
     <meta property="og:image" content={ogImageUrl} />
-    {canonicalUrl && <meta property="og:url" content={canonicalUrl} />}
+    <meta property="og:image:alt" content={`${entity.fullName} — pangunahing tanawin sa ${entity.city}, ${entity.country}`} />
+    <meta property="og:url" content={siteUrl} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={`${entity.fullName} sa ${entity.shortName}, ${entity.city} — Oras, Ruta at Kasaysayan`} />
+    <meta name="twitter:description" content={`Libreng pasok · 5:00 AM–10:00 PM araw-araw · ruta mula LRT-1 United Nations Avenue at NAIA · mapa, panahon ngayon, at kasaysayan ng Motto Stella.`} />
+    <meta name="twitter:image" content={ogImageUrl} />
 
     <script type="application/ld+json" set:html={JSON.stringify(attractionJsonLd)}></script>
+    <script type="application/ld+json" set:html={JSON.stringify(breadcrumbJsonLd)}></script>
+    <script type="application/ld+json" set:html={JSON.stringify(siteJsonLd)}></script>
     <script type="application/ld+json" set:html={JSON.stringify(faqJsonLd)}></script>
 
     <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-HXM22WWPKP"></script>
@@ -124,6 +617,13 @@ const faqJsonLd = {
       gtag('js', new Date());
       gtag('config', 'G-HXM22WWPKP');
     </script>
+    <script is:inline>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js').catch(function () {});
+        });
+      }
+    </script>
   </head>
   <body class="paper-noise overflow-x-hidden">
     <header class="absolute inset-x-0 top-0 z-50 border-b border-white/15 text-white">
@@ -131,11 +631,17 @@ const faqJsonLd = {
         <a href="#itaas" aria-label="Bantayog ni José Rizal — bumalik sa itaas" class="shrink-0 rounded-sm bg-paper/95 px-3 py-2 shadow-lg shadow-black/10">
           <img src="/logo.svg" width="270" height="45" alt="Motto Stella — Bantayog ni José Rizal" class="h-9 w-auto sm:h-10" />
         </a>
-        <nav aria-label="Pangunahing nabigasyon" class="hidden items-center gap-7 text-[11px] font-semibold uppercase tracking-[0.18em] md:flex">
+        <nav aria-label="Pangunahing nabigasyon" class="hidden items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.14em] lg:flex xl:gap-5 xl:text-[11px]">
+          <a class="transition hover:text-gold" href="#tungkol">Tungkol</a>
           <a class="transition hover:text-gold" href="#kuwento">Kuwento</a>
+          <a class="transition hover:text-gold" href="#panahon">Panahon</a>
           <a class="transition hover:text-gold" href="#dalaw">Pagdalaw</a>
+          <a class="transition hover:text-gold" href="#pasilidad">Pasilidad</a>
           <a class="transition hover:text-gold" href="#pagpunta">Pagpunta</a>
+          <a class="transition hover:text-gold" href="#ruta">Ruta</a>
           <a class="transition hover:text-gold" href="#paligid">Paligid</a>
+          <a class="transition hover:text-gold" href="#agham">Agham</a>
+          <a class="transition hover:text-gold" href="#review">Review</a>
           <a class="transition hover:text-gold" href="#faq">FAQ</a>
         </nav>
       </div>
@@ -143,7 +649,7 @@ const faqJsonLd = {
 
     <main id="itaas">
       <section class="relative min-h-[92vh] overflow-hidden bg-ink text-white">
-        <img src="/images/rizal-monument-flags.jpg" alt="Bantayog ni José Rizal na napapalibutan ng mga watawat ng Pilipinas sa Luneta" class="absolute inset-0 h-full w-full object-cover object-[center_42%] opacity-55" fetchpriority="high" />
+        <img src="/images/rizal-monument-flags.jpg" alt={`${entity.fullName} — pangunahing tanawin sa ${entity.city}, ${entity.country}, napapalibutan ng mga watawat ng Pilipinas sa ${entity.shortName}`} class="absolute inset-0 h-full w-full object-cover object-[center_42%] opacity-55" fetchpriority="high" />
         <div class="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,23,36,.93)_0%,rgba(7,23,36,.74)_43%,rgba(7,23,36,.22)_78%,rgba(7,23,36,.46)_100%)]"></div>
         <div class="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-ink to-transparent"></div>
         <div class="relative mx-auto flex min-h-[92vh] max-w-7xl items-end px-5 pb-16 pt-32 lg:px-8 lg:pb-20">
@@ -152,7 +658,7 @@ const faqJsonLd = {
               <span class="h-px w-12 bg-gold"></span>
               Motto Stella · Luneta, Maynila
             </div>
-            <h1 class="display text-5xl font-normal leading-[.98] tracking-[-.045em] sm:text-7xl lg:text-[6.6rem]">Bantayog ni<br /><em class="font-normal text-paper">José Rizal</em></h1>
+            <h1 class="display text-5xl font-normal leading-[.98] tracking-[-.045em] sm:text-7xl lg:text-[6.6rem]">Bantayog ni<br /><em class="font-normal text-paper">José Rizal</em><span class="mt-6 block font-sans text-xs font-semibold uppercase tracking-[0.26em] text-gold sm:text-sm">(José Rizal Monument · {entity.shortName}, {entity.city})</span></h1>
             <p class="mt-7 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">Isang himlayan, isang pambansang alaala, at isang “gumagabay na bituin” sa bukana ng Maynila. Kilalanin muna ang mga simbolo nito bago tumayo sa harap ng bantayog.</p>
             <div class="mt-9 flex flex-wrap gap-3">
               <a href="#dalaw" class="rounded-full bg-gold px-6 py-3 text-sm font-bold text-ink transition hover:-translate-y-0.5 hover:bg-[#dab45c]">Planuhin ang pagdalaw</a>
@@ -166,8 +672,45 @@ const faqJsonLd = {
         <div class="mx-auto grid max-w-7xl grid-cols-2 gap-px bg-white/15 px-5 sm:grid-cols-4 lg:px-8">
           <div class="bg-ink px-5 py-6"><p class="text-[10px] uppercase tracking-[.2em] text-gold">Oras ng parke</p><p class="display mt-2 text-xl">5:00 AM–10:00 PM</p><p class="mt-1 text-xs text-white/55">araw-araw</p></div>
           <div class="bg-ink px-5 py-6"><p class="text-[10px] uppercase tracking-[.2em] text-gold">Pangkalahatang pasok</p><p class="display mt-2 text-xl">Karaniwang libre</p><p class="mt-1 text-xs text-white/55">walang hiwalay na ticket sa monumento</p></div>
-          <div class="bg-ink px-5 py-6"><p class="text-[10px] uppercase tracking-[.2em] text-gold">Rating</p><p class="display mt-2 text-xl">4.6 / 5</p><p class="mt-1 text-xs text-white/55">Tripadvisor rating na ginamit sa schema</p></div>
+          <div class="bg-ink px-5 py-6"><p class="text-[10px] uppercase tracking-[.2em] text-gold">Rating</p><p class="display mt-2 text-xl">{rating.value.toFixed(1)} / {rating.best}</p><p class="mt-1 text-xs text-white/55">{ratingCountLabel} review sa {rating.source}</p></div>
           <div class="bg-ink px-5 py-6"><p class="text-[10px] uppercase tracking-[.2em] text-gold">Ilaan</p><p class="display mt-2 text-xl">45–90 minuto</p><p class="mt-1 text-xs text-white/55">para sa monumento at paligid</p></div>
+        </div>
+        <p class="mx-auto mt-4 max-w-7xl px-5 text-[10px] leading-5 text-white/50 lg:px-8">
+          {reviewInlineNote} · <a href={entity.mapsShareUrl} target="_blank" rel="noreferrer" class="font-semibold text-gold transition hover:text-white">Tingnan ang lahat ng review sa Google Maps ↗</a>
+        </p>
+        <p class="mx-auto mt-2 max-w-7xl px-5 text-[10px] leading-5 text-white/50 lg:px-8">
+          Lokasyon: {entity.streetAddress}, {entity.city} {entity.postalCode} · pinakamalapit na riles: LRT-1 United Nations Avenue (Taft Avenue) · may mga opisyal na seremonya at pagpapalit ng guwardiya sa monumento, kaya nag-iiba ang iskedyul ayon sa abiso ng NPDC.
+        </p>
+      </section>
+
+      <section id="tungkol" class="border-b border-ink/10 py-16 sm:py-20">
+        <div class="mx-auto max-w-4xl px-5 lg:px-8">
+          <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Tungkol sa bantayog</p>
+          <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Tungkol sa {entity.fullName} ({entity.city})</h2>
+          <nav aria-label="Hierarchy ng lokasyon" class="mt-6 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[.16em] text-ink-soft">
+            <span class="font-semibold text-ink">{entity.fullName}</span>
+            <span aria-hidden="true" class="text-gold">›</span>
+            <span>{entity.city}</span>
+            <span aria-hidden="true" class="text-gold">›</span>
+            <span>{entity.region}</span>
+            <span aria-hidden="true" class="text-gold">›</span>
+            <span>{entity.country}</span>
+          </nav>
+          <p class="mt-7 text-base leading-8 text-ink-soft">
+            Maligayang pagdating sa <strong class="text-ink">{entity.fullName}</strong> ({entity.officialEnglishName}) — ang pambansang bantayog na malawak na kinikilala bilang sentro ng <strong class="text-ink">{entity.shortName}</strong>, ang Rizal Park sa pusod ng {entity.city}, {entity.region}, {entity.country}. Nakatayo ito sa {entity.streetAddress}, {entity.city} {entity.postalCode}, at nagsisilbing himlayan at pambansang alaala ni Dr. José Rizal.
+          </p>
+          <p class="mt-5 text-base leading-8 text-ink-soft">
+            Kapag bumisita sa {entity.fullName}, madaling maabot ang mga kalapit na historical landmark at pasyalan, kabilang ang <strong class="text-ink">{entity.nearbyLandmark1}</strong> at <strong class="text-ink">{entity.nearbyLandmark2}</strong>. Libre at bukas sa publiko ang monumento at ang bakuran nito, kaya madali itong isingit sa isang heritage loop sa {entity.city}.
+          </p>
+          <dl class="mt-8 grid gap-px border border-ink/10 bg-ink/10 sm:grid-cols-3">
+            <div class="bg-paper p-5"><dt class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Lokasyon</dt><dd class="mt-2 text-sm leading-6 text-ink-soft">{entity.streetAddress}, {entity.city} {entity.postalCode}</dd></div>
+            <div class="bg-paper p-5"><dt class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Coordinates</dt><dd class="mt-2 text-sm leading-6 text-ink-soft">{entity.latitude}, {entity.longitude}</dd></div>
+            <div class="bg-paper p-5"><dt class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Bansa</dt><dd class="mt-2 text-sm leading-6 text-ink-soft">{entity.country} ({entity.countryCode})</dd></div>
+          </dl>
+          <p class="mt-6 text-sm leading-7 text-ink-soft">
+            <strong class="text-ink">Mga karaniwang tawag dito:</strong> {entity.fullName}, bantayog ni Rizal sa Luneta, monumento ni Rizal sa Luneta, {entity.officialEnglishName}, at Motto Stella — pare-parehong tumutukoy sa monumentong nasa {entity.parkName}.
+          </p>
+          <a href={entity.mapsShareUrl} target="_blank" rel="noreferrer" class="mt-7 inline-flex items-center gap-3 border-b border-gold pb-1 text-sm font-bold text-ink transition hover:text-rizal-red">Tingnan ang eksaktong lokasyon sa Google Maps <span aria-hidden="true">↗</span></a>
         </div>
       </section>
 
@@ -175,7 +718,7 @@ const faqJsonLd = {
         <div class="mx-auto grid max-w-7xl gap-12 px-5 lg:grid-cols-[.9fr_1.1fr] lg:items-center lg:px-8">
           <div class="starburst relative mx-auto w-full max-w-lg">
             <figure class="relative z-10 overflow-hidden rounded-t-[12rem] border border-ink/10 bg-stone shadow-2xl shadow-ink/15">
-              <img src="/images/rizal-monument-front.jpg" alt="Harapang tanawin ng granite at bronze na Bantayog ni José Rizal" class="aspect-[4/5] w-full object-cover" loading="lazy" />
+              <img src="/images/rizal-monument-front.jpg" alt={`${entity.fullName} — harapang tanawin ng granite at bronze sa ${entity.city}, ${entity.country}`} class="aspect-[4/5] w-full object-cover" loading="lazy" />
             </figure>
             <div class="absolute -bottom-5 -right-3 z-20 w-44 border border-gold/50 bg-paper p-4 shadow-xl sm:-right-8">
               <p class="text-[10px] font-bold uppercase tracking-[.22em] text-rizal-red">Taas</p>
@@ -184,11 +727,44 @@ const faqJsonLd = {
             </div>
           </div>
           <div class="lg:pl-8">
-            <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Ang kuwento ng Motto Stella</p>
-            <h2 class="display mt-4 text-4xl leading-tight tracking-tight sm:text-5xl">Dinisenyo upang maging <em>gumagabay na bituin.</em></h2>
+            <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Kasaysayan at kahalagahan ng {entity.fullName}</p>
+            <h2 class="display mt-4 text-4xl leading-tight tracking-tight sm:text-5xl">Kasaysayan at kahalagahan ng Bantayog ni José Rizal: dinisenyo upang maging <em>gumagabay na bituin.</em></h2>
             <p class="mt-6 text-base leading-8 text-ink-soft">Ang monumento ay likha ng Swiss sculptor na si Dr. Richard Kissling. Tinawag itong <strong class="text-ink">Motto Stella</strong> — “guiding star.” Sa ilalim nito nakahimlay ang mga labi ni Dr. José Rizal, na inilipat sa Luneta bilang bahagi ng paglikha ng pambansang alaala sa lugar ng kanyang pagkamatay.</p>
             <p class="mt-5 text-base leading-8 text-ink-soft">Noong 1901, iniatas ng Act No. 243 ang pagtatayo ng bantayog. Isang pandaigdigang kumpetisyon sa disenyo ang sumunod; kalaunan, ang disenyo ni Kissling ang naisakatuparan. Ang monumento ay pormal na inilantad noong 1913.</p>
             <a href="https://npdc.gov.ph/rizal-monument/" target="_blank" rel="noreferrer" class="mt-7 inline-flex items-center gap-3 border-b border-gold pb-1 text-sm font-bold text-ink transition hover:text-rizal-red">Basahin ang opisyal na kasaysayan sa NPDC <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section id="kronolohiya" class="border-b border-ink/10 py-20 sm:py-24">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="grid gap-10 lg:grid-cols-[.75fr_1.25fr] lg:items-start">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Kronolohiya at kuwento</p>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Paano nabuo ang {entity.fullName}.</h2>
+              <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Mula sa batas ng 1901 hanggang sa pagbubunyag noong 1913 at sa mga sumunod na dekada — narito ang mga pangunahing hakbang sa pagkakaroon ng pambansang bantayog sa Luneta.</p>
+              <p class="mt-5 max-w-md text-xs leading-6 text-ink-soft">Para sa mga tiyak na petsa at detalye ng konserbasyon, sundin ang mga opisyal na sanggunian ng NPDC at NHCP na nakalista sa seksyong mga pinagmulan.</p>
+            </div>
+            <ol class="border-l border-gold/60">
+              {timeline.map((item) => (
+                <li class="relative pb-8 pl-7">
+                  <span class="absolute -left-[7px] top-2 h-3 w-3 rounded-full bg-gold"></span>
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">{item.year}</p>
+                  <h3 class="display mt-1 text-2xl">{item.title}</h3>
+                  <p class="mt-2 text-sm leading-6 text-ink-soft">{item.text}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div class="mt-14 grid gap-px border border-ink/10 bg-ink/10 md:grid-cols-3">
+            {storyNotes.map((note) => (
+              <article class="bg-paper p-7">
+                <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">{note.label}</p>
+                <h3 class="display mt-3 text-2xl">{note.title}</h3>
+                <p class="mt-3 text-sm leading-6 text-ink-soft">{note.text}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -210,12 +786,91 @@ const faqJsonLd = {
 
       <section aria-label="Mga larawan ng monumento" class="bg-ink py-4">
         <div class="mx-auto grid max-w-[1600px] gap-4 px-4 sm:grid-cols-2 lg:grid-cols-4">
-          <figure class="group overflow-hidden"><img src="/images/rizal-monument-garden.jpg" alt="Rizal Monument mula sa luntiang bahagi ng parke" class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
-          <figure class="group overflow-hidden sm:row-span-2 lg:row-span-1"><img src="/images/rizal-monument-sunset.jpg" alt="Rizal Monument sa mainit na liwanag ng hapon" class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
-          <figure class="group overflow-hidden"><img src="/images/rizal-monument-grounds.jpg" alt="Malawak na tanawin ng monumento at bakuran ng Luneta" class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
-          <figure class="group overflow-hidden"><img src="/images/rizal-monument-flags.jpg" alt="Mga watawat ng Pilipinas sa paligid ng Rizal Monument" class="aspect-[4/3] h-full w-full object-cover object-[center_42%] transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
+          <figure class="group overflow-hidden"><img src="/images/rizal-monument-garden.jpg" alt={`Rizal Park (${entity.shortName}) garden malapit sa ${entity.fullName}`} class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
+          <figure class="group overflow-hidden sm:row-span-2 lg:row-span-1"><img src="/images/rizal-monument-sunset.jpg" alt={`${entity.fullName} sa mainit na liwanag ng hapon sa ${entity.city}`} class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
+          <figure class="group overflow-hidden"><img src="/images/rizal-monument-grounds.jpg" alt={`Malawak na tanawin ng ${entity.fullName} at bakuran ng ${entity.shortName}`} class="aspect-[4/3] h-full w-full object-cover transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
+          <figure class="group overflow-hidden"><img src="/images/rizal-monument-flags.jpg" alt={`Mga watawat ng Pilipinas sa paligid ng ${entity.fullName} sa ${entity.shortName}`} class="aspect-[4/3] h-full w-full object-cover object-[center_42%] transition duration-500 group-hover:scale-[1.025]" loading="lazy" /></figure>
         </div>
         <p class="mx-auto max-w-7xl px-5 pb-3 pt-4 text-[10px] tracking-wide text-white/45 lg:px-8">Mga larawan: National Parks Development Committee. Public domain maliban kung may ibang pahayag sa pinagmulan.</p>
+      </section>
+
+      <section id="panahon" class="border-b border-ink/10 bg-paper-deep py-20 sm:py-24">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="grid gap-8 lg:grid-cols-[.8fr_1.2fr] lg:items-start">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Panahon ngayon</p>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Panahon sa {entity.shortName} ngayon at sa mga susunod na araw.</h2>
+              <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Outdoor ang karanasan sa {entity.fullName}, kaya ang init, halumigmig, at tsansa ng ulan ang pinakapraktikal na impormasyon bago ka lumabas.</p>
+              <p class="mt-5 max-w-md text-xs leading-6 text-ink-soft">Pinagmulan ng datos ng panahon: Open-Meteo · huling na-update: <span id="wx-stamp" class="font-semibold text-ink">{weatherStampLabel}</span>. Ang mga numero ay para sa {entity.city} at maaaring magbago sa loob ng araw.</p>
+              <p class="mt-3 max-w-md text-xs leading-6 text-ink-soft">Para sa opisyal na abiso sa bagyo at malakas na ulan, sundin ang PAGASA.</p>
+            </div>
+            <div>
+              <div class="grid gap-px border border-ink/10 bg-ink/10 sm:grid-cols-[.95fr_1.05fr]">
+                <div class="bg-paper p-7">
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Ngayon sa {entity.city}</p>
+                  <p class="display mt-3 text-6xl leading-none"><span id="wx-now-temp">{weatherNow.temp}</span>°C</p>
+                  <p id="wx-now-text" class="mt-3 text-sm font-semibold text-ink">{weatherNow.text}</p>
+                  <dl class="mt-6 grid grid-cols-2 gap-4">
+                    <div><dt class="text-[10px] uppercase tracking-[.16em] text-ink-soft">Feels like</dt><dd id="wx-now-feels" class="display mt-1 text-xl">{weatherNow.feels}°C</dd></div>
+                    <div><dt class="text-[10px] uppercase tracking-[.16em] text-ink-soft">Halumigmig</dt><dd id="wx-now-humidity" class="display mt-1 text-xl">{weatherNow.humidity}%</dd></div>
+                    <div><dt class="text-[10px] uppercase tracking-[.16em] text-ink-soft">Hangin</dt><dd id="wx-now-wind" class="display mt-1 text-xl">{weatherNow.wind} km/h</dd></div>
+                    <div><dt class="text-[10px] uppercase tracking-[.16em] text-ink-soft">Ulan</dt><dd id="wx-now-rain" class="display mt-1 text-xl">{weatherNow.rain} mm</dd></div>
+                  </dl>
+                </div>
+                <div class="bg-ink p-7 text-white">
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-gold">Kailangan ba ng payong?</p>
+                  <p id="wx-advice" class="display mt-4 text-2xl leading-snug">{umbrellaAdvice}</p>
+                  <p class="mt-5 text-xs leading-6 text-white/60">Ina-update ang mga numero sa tuwing bubuksan ang pahina, kaya mas bago ito kaysa sa oras na nakalimbag sa itaas.</p>
+                  <a href="https://www.pagasa.dost.gov.ph/" target="_blank" rel="noopener noreferrer" class="mt-6 inline-flex items-center gap-2 border-b border-gold pb-1 text-xs font-bold text-gold transition hover:text-white">Opisyal na abiso ng PAGASA <span aria-hidden="true">↗</span></a>
+                </div>
+              </div>
+              <div id="wx-days" class="mt-4 grid grid-cols-2 gap-px border border-ink/10 bg-ink/10 sm:grid-cols-4 lg:grid-cols-7">
+                {weatherDayCards.map((day) => (
+                  <div class="bg-paper p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[.16em] text-rizal-red">{day.weekday}</p>
+                    <p class="mt-1 text-[10px] text-ink-soft">{day.date}</p>
+                    <p class="display mt-3 text-xl">{day.max}° / {day.min}°</p>
+                    <p class="mt-2 text-xs leading-5 text-ink-soft">{day.text}</p>
+                    <p class="mt-2 text-[10px] font-semibold text-ink">{day.rainLabel}</p>
+                  </div>
+                ))}
+              </div>
+              <p id="wx-nodata" class={weatherDayCards.length ? 'hidden' : 'mt-4 text-xs leading-6 text-ink-soft'}>Hindi nakukuha ang pinakabagong datos ng panahon sa sandaling ito. Gamitin ang estratehiya bawat quarter sa ibaba at suriin ang opisyal na abiso ng PAGASA.</p>
+            </div>
+          </div>
+
+          <div class="mt-14">
+            <div class="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Estratehiya bawat quarter</p>
+                <h2 class="display mt-3 text-3xl tracking-tight sm:text-4xl">Kailan pinakamainam bumisita sa {entity.shortName}.</h2>
+              </div>
+              <p class="max-w-md text-xs leading-6 text-ink-soft">Batay sa karaniwang klima ng Maynila ayon sa mga climate normal ng PAGASA at sa mga naobserbahang pattern ng pag-ulan sa rehiyon.</p>
+            </div>
+            <div class="mt-8 overflow-x-auto">
+              <table class="w-full min-w-[720px] border-collapse text-left">
+                <thead>
+                  <tr class="border-b border-ink/20">
+                    <th scope="col" class="py-3 pr-4 text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Panahon</th>
+                    <th scope="col" class="py-3 pr-4 text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Klima</th>
+                    <th scope="col" class="py-3 pr-4 text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Dami ng tao</th>
+                    <th scope="col" class="py-3 text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">Payo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {quarters.map((row) => (
+                    <tr class="border-b border-ink/10 align-top">
+                      <th scope="row" class="py-4 pr-4 text-sm font-semibold text-ink">{row.quarter}</th>
+                      <td class="py-4 pr-4 text-sm leading-6 text-ink-soft">{row.climate}</td>
+                      <td class="py-4 pr-4 text-sm leading-6 text-ink-soft">{row.crowd}</td>
+                      <td class="py-4 text-sm leading-6 text-ink-soft">{row.tip}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="dalaw" class="py-20 sm:py-28">
@@ -223,7 +878,7 @@ const faqJsonLd = {
           <div class="grid gap-8 lg:grid-cols-[.7fr_1.3fr]">
             <div>
               <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Praktikal na gabay</p>
-              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Bago ka pumunta.</h2>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Bago ka pumunta sa Bantayog ni José Rizal.</h2>
               <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Ang monumento ay nasa bukas na bahagi ng Luneta, kaya mas nakakaapekto ang araw, ulan, public events, at crowd level kaysa sa isang tipikal na indoor attraction.</p>
             </div>
             <div class="grid gap-px overflow-hidden border border-ink/10 bg-ink/10 sm:grid-cols-2">
@@ -246,12 +901,33 @@ const faqJsonLd = {
         </div>
       </section>
 
+      <section id="pasilidad" class="bg-paper-deep py-20 sm:py-28">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="grid gap-8 lg:grid-cols-[.7fr_1.3fr]">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Pasilidad para sa bisita</p>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Anong uri ng pasilidad ang asahan sa paligid ng {entity.shortName}.</h2>
+              <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Isang independiyente at hindi kumikitang gabay ito. <strong class="text-ink">Mga uri lamang ng pasilidad ang inilalarawan dito</strong> — hindi kami nagrerekomenda ng partikular na establisyimento o tatak, dahil nag-iiba ang oras, presyo, at availability.</p>
+            </div>
+            <div class="grid gap-px border border-ink/10 bg-ink/10 sm:grid-cols-2 lg:grid-cols-3">
+              {facilityGroups.map((item) => (
+                <article class="bg-paper p-6">
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">{item.label}</p>
+                  <h3 class="display mt-3 text-xl">{item.title}</h3>
+                  <p class="mt-3 text-sm leading-6 text-ink-soft">{item.text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="pagpunta" class="bg-ink py-20 text-white sm:py-28">
         <div class="mx-auto max-w-7xl px-5 lg:px-8">
           <div class="grid gap-12 lg:grid-cols-2">
             <div>
               <p class="text-xs font-bold uppercase tracking-[.24em] text-gold">Detalyadong transportasyon</p>
-              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Pumunta sa Luneta, hindi lang sa “1225 Roxas.”</h2>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Paano puntahan ang {entity.fullName} sa {entity.city} — hindi lang sa “1225 Roxas.”</h2>
               <p class="mt-5 max-w-xl text-sm leading-7 text-white/65">Sa navigation app, gamitin ang <strong class="text-white">“Rizal Monument”</strong> bilang destination para tumama sa memorial mismo at hindi sa isang generic na bahagi ng boulevard.</p>
             </div>
             <div class="space-y-7">
@@ -262,12 +938,84 @@ const faqJsonLd = {
             </div>
           </div>
 
+          <div class="mt-14 border-t border-white/15 pt-12">
+            <div class="max-w-2xl">
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-gold">Hakbang-hakbang papuntang monumento</p>
+              <h2 class="display mt-3 text-3xl tracking-tight sm:text-4xl">Mula paliparan, tren, kalsada — at kung magmamaneho ka.</h2>
+            </div>
+            <div class="mt-8 grid gap-px border border-white/15 bg-white/10 md:grid-cols-2">
+              {transportDetails.map((step) => (
+                <article class="bg-ink p-6">
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-gold">{step.label}</p>
+                  <h3 class="display mt-3 text-xl">{step.title}</h3>
+                  <p class="mt-3 text-sm leading-6 text-white/65">{step.text}</p>
+                </article>
+              ))}
+            </div>
+            <p class="mt-6 max-w-3xl text-xs leading-6 text-white/50">Address para sa navigation app: {entity.streetAddress}, {entity.city} {entity.postalCode}, {entity.region}, {entity.country} · coordinates {entity.latitude}, {entity.longitude}. Ang mga ruta, pamasahe, at oras ng serbisyo ay nagbabago; suriin ang live na direksiyon sa araw ng biyahe.</p>
+          </div>
+
           <div id="mapa" class="mt-14 overflow-hidden border border-white/15 bg-white/5">
             <div class="flex flex-wrap items-end justify-between gap-4 border-b border-white/15 px-5 py-5 sm:px-7">
               <div><p class="text-[10px] font-bold uppercase tracking-[.2em] text-gold">Mapa</p><h3 class="display mt-1 text-2xl">Rizal Monument · Ermita, Maynila</h3></div>
               <a href="https://maps.app.goo.gl/FoCBsLYeuxtmVA8W6" target="_blank" rel="noreferrer" class="text-xs font-bold text-gold hover:text-white">Buksan sa Google Maps ↗</a>
             </div>
-            <iframe title="Mapa ng Bantayog ni José Rizal sa Maynila" src={mapUrl} class="h-[460px] w-full border-0 grayscale-[20%]" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+            <iframe title={`Mapa ng ${entity.fullName} sa ${entity.city}, ${entity.country}`} src={mapUrl} class="h-[460px] w-full border-0 grayscale-[20%]" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+          </div>
+          <p class="mt-6 max-w-3xl text-xs leading-6 text-white/55">
+            Para sa opisyal na update at impormasyon sa turismo ng rehiyon, bisitahin ang
+            <a href={entity.govtTourismUrl} target="_blank" rel="noopener noreferrer" class="font-semibold text-gold transition hover:text-white">{entity.country} / {entity.region} — National Parks Development Committee (opisyal na tourism portal)</a>.
+            Maaari ring buksan ang
+            <a href={entity.mapsShareUrl} target="_blank" rel="noopener noreferrer" class="font-semibold text-gold transition hover:text-white">Google Maps listing ng {entity.fullName} ↗</a>.
+          </p>
+        </div>
+      </section>
+
+      <section id="ruta" class="bg-paper-deep py-20 sm:py-28">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="max-w-2xl">
+            <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Ruta ayon sa bisita</p>
+            <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Pumili ng ruta batay sa kasama mo at sa oras na meron ka.</h2>
+            <p class="mt-5 text-sm leading-7 text-ink-soft">Ang Luneta ay patag at madaling tahakin, kaya ang pangunahing pagkakaiba ng bawat ruta ay oras ng araw, lilim, at dami ng lakad.</p>
+          </div>
+
+          <div class="mt-12 grid gap-px border border-ink/10 bg-ink/10 lg:grid-cols-3">
+            {personaRoutes.map((route) => (
+              <article class="bg-paper p-7">
+                <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">{route.duration}</p>
+                <h3 class="display mt-3 text-2xl">{route.label}</h3>
+                <p class="mt-4 text-sm leading-6 text-ink-soft">{route.stops}</p>
+                <p class="mt-4 border-t border-ink/10 pt-4 text-xs leading-6 text-ink-soft">{route.tip}</p>
+              </article>
+            ))}
+          </div>
+
+          <div class="mt-5 grid gap-5 lg:grid-cols-2">
+            <div class="border border-ink/10 bg-paper p-7 sm:p-9">
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Kalahating araw</p>
+              <h3 class="display mt-3 text-3xl tracking-tight">Humigit-kumulang 4 na oras.</h3>
+              <ol class="mt-7 space-y-5">
+                {halfDayPlan.map((step) => (
+                  <li class="flex gap-5 border-b border-ink/10 pb-5">
+                    <span class="display w-14 shrink-0 text-sm text-rizal-red">{step.time}</span>
+                    <span><span class="block font-semibold text-ink">{step.title}</span><span class="mt-1 block text-sm leading-6 text-ink-soft">{step.text}</span></span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div class="border border-ink/10 bg-paper p-7 sm:p-9">
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Buong araw</p>
+              <h3 class="display mt-3 text-3xl tracking-tight">Humigit-kumulang 8 oras.</h3>
+              <ol class="mt-7 space-y-5">
+                {fullDayPlan.map((step) => (
+                  <li class="flex gap-5 border-b border-ink/10 pb-5">
+                    <span class="display w-14 shrink-0 text-sm text-rizal-red">{step.time}</span>
+                    <span><span class="block font-semibold text-ink">{step.title}</span><span class="mt-1 block text-sm leading-6 text-ink-soft">{step.text}</span></span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           </div>
         </div>
       </section>
@@ -292,7 +1040,7 @@ const faqJsonLd = {
 
             <div class="border border-ink/10 bg-ink p-7 text-white sm:p-9">
               <p class="text-xs font-bold uppercase tracking-[.24em] text-gold">Kalapit na pasyalan</p>
-              <h2 class="display mt-3 text-4xl tracking-tight">Gawing heritage loop ang Luneta.</h2>
+              <h2 class="display mt-3 text-4xl tracking-tight">Mga landmark at pasyalan sa paligid ng {entity.shortName}: gawing heritage loop ang {entity.city}.</h2>
               <div class="mt-8 grid gap-4 sm:grid-cols-2">
                 <article class="border border-white/15 p-5"><p class="text-[10px] font-bold uppercase tracking-[.18em] text-gold">Museo</p><h3 class="display mt-3 text-2xl">National Museum of Anthropology</h3><p class="mt-2 text-sm leading-6 text-white/60">Nasa gilid mismo ng Rizal Park; natural na kasunod para sa kulturang Pilipino at materyal na pamana.</p></article>
                 <article class="border border-white/15 p-5"><p class="text-[10px] font-bold uppercase tracking-[.18em] text-gold">Museo</p><h3 class="display mt-3 text-2xl">National Museum of Fine Arts</h3><p class="mt-2 text-sm leading-6 text-white/60">Isang maikling lakad sa museum complex, mainam para sa sining at mas malawak na konteksto ng kasaysayan.</p></article>
@@ -316,6 +1064,70 @@ const faqJsonLd = {
         </div>
       </section>
 
+      <section id="agham" class="border-t border-ink/10 py-20 sm:py-28">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="grid gap-8 lg:grid-cols-[.7fr_1.3fr]">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Agham at konserbasyon</p>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Bakit ganito ang anyo at lagay ng {entity.shortName}.</h2>
+              <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Isang maikling paliwanag sa materyal ng bantayog, sa heograpiya ng parke, at sa mga bagay na nakakaapekto sa pangangalaga nito — para mas maintindihan ang lugar hindi lamang bilang larawan, kundi bilang pisikal na espasyo.</p>
+            </div>
+            <div class="grid gap-px border border-ink/10 bg-ink/10 sm:grid-cols-2">
+              {scienceNotes.map((note) => (
+                <article class="bg-paper p-6">
+                  <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">{note.label}</p>
+                  <h3 class="display mt-3 text-xl">{note.title}</h3>
+                  <p class="mt-3 text-sm leading-6 text-ink-soft">{note.text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div class="mt-14 border-t border-ink/15 pt-10">
+            <div class="grid gap-8 lg:grid-cols-[.7fr_1.3fr]">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Responsibilidad ng bisita</p>
+                <h2 class="display mt-4 text-3xl tracking-tight sm:text-4xl">Paano bisitahin nang may respeto.</h2>
+              </div>
+              <ul class="space-y-4">
+                {visitorResponsibilities.map((item) => (
+                  <li class="flex gap-4 border-b border-ink/10 pb-4 text-sm leading-7 text-ink-soft"><span aria-hidden="true" class="display shrink-0 text-gold">—</span>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="review" class="border-t border-ink/10 bg-paper-deep py-20 sm:py-24">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <div class="grid gap-8 lg:grid-cols-[.85fr_1.15fr] lg:items-start">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Rating at review</p>
+              <h2 class="display mt-4 text-4xl tracking-tight sm:text-5xl">Ano ang sinasabi ng mga bumisita sa {entity.fullName}.</h2>
+              <p class="mt-5 max-w-md text-sm leading-7 text-ink-soft">Ang rating at bilang ng review sa ibaba ay naka-sync mula sa mga review ng user sa Google Maps. Hindi namin kinokopya ang buong teksto ng bawat review — ipinapakita lamang dito ang pinagsama-samang datos at itinuturo ka sa orihinal na pinagmulan.</p>
+            </div>
+            <div class="border border-ink/10 bg-paper p-7 sm:p-9">
+              <p class="text-[10px] font-bold uppercase tracking-[.2em] text-rizal-red">
+                Mga review mula sa mga user ng Google Maps · <a href={entity.mapsShareUrl} target="_blank" rel="noopener noreferrer" class="underline transition hover:text-ink">Tingnan ang lahat ng review sa Google Maps ↗</a>
+              </p>
+              <div class="mt-6 flex flex-wrap items-end gap-x-7 gap-y-4">
+                <p class="display text-6xl leading-none text-ink">{rating.value.toFixed(1)}<span class="ml-2 align-baseline text-xl text-ink-soft">/ {rating.best}</span></p>
+                <div>
+                  <p class="text-2xl leading-none tracking-[0.15em] text-gold" aria-hidden="true">★★★★★</p>
+                  <p class="mt-2 text-sm text-ink-soft"><span class="font-semibold text-ink">{ratingCountLabel}</span> review sa {rating.source}</p>
+                </div>
+              </div>
+              <div class="mt-6 h-2 w-full bg-stone/40"><div class="h-2 bg-gold" style={`width: ${(rating.value / rating.best) * 100}%`}></div></div>
+              <p class="mt-4 text-[10px] leading-5 text-ink-soft">{reviewInlineNote} · {rating.syncedLabel}</p>
+              <p class="mt-4 text-xs leading-6 text-ink-soft">{reviewSourceNote}</p>
+              <a href={entity.mapsShareUrl} target="_blank" rel="noopener noreferrer" class="mt-6 inline-flex items-center gap-3 rounded-full bg-ink px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-[#1b3a55]">Tingnan ang lahat ng review sa Google Maps <span aria-hidden="true">↗</span></a>
+              <p class="mt-5 text-[10px] leading-5 text-ink-soft">Ang rating at mga review ay ipinapakita lamang sa pahinang ito at hindi isinama sa structured data (JSON-LD) ng site. Ang Google Maps ay trademark ng Google LLC; ang gabay na ito ay hindi opisyal na website ng NPDC, NHCP, o ng Pamahalaan ng Pilipinas.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="faq" class="py-20 sm:py-28">
         <div class="mx-auto max-w-4xl px-5 lg:px-8">
           <div class="text-center">
@@ -335,6 +1147,47 @@ const faqJsonLd = {
           </div>
         </div>
       </section>
+
+      <section id="sanggunian" class="border-t border-ink/10 bg-paper-deep py-16 sm:py-20">
+        <div class="mx-auto max-w-7xl px-5 lg:px-8">
+          <p class="text-xs font-bold uppercase tracking-[.24em] text-rizal-red">Mga pinagmulan</p>
+          <h2 class="display mt-3 text-3xl tracking-tight sm:text-4xl">Saan nanggagaling ang datos sa gabay na ito.</h2>
+          <div class="mt-8 grid gap-px border border-ink/10 bg-ink/10 md:grid-cols-2">
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Opisyal na kasaysayan at parke</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">National Parks Development Committee (NPDC) — Rizal Monument at Rizal Park ({entity.shortName}).</p>
+              <p class="mt-3 text-xs leading-6"><a href="https://npdc.gov.ph/rizal-monument/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">npdc.gov.ph/rizal-monument/ ↗</a><br /><a href="https://npdc.gov.ph/rizal-park/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">npdc.gov.ph/rizal-park/ ↗</a></p>
+            </article>
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Pambansang rehistro ng pamana</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">National Historical Commission of the Philippines (NHCP) — José Rizal National Monument, 1913.</p>
+              <p class="mt-3 text-xs leading-6"><a href="https://philhistoricsites.nhcp.gov.ph/registry_database/jose-rizal-national-monument-1913/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">philhistoricsites.nhcp.gov.ph ↗</a></p>
+            </article>
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Transportasyon</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">Light Rail Transit Authority (LRT-1, United Nations Avenue station) para sa pampublikong ruta papuntang {entity.shortName}.</p>
+              <p class="mt-3 text-xs leading-6"><a href="https://www.lrta.gov.ph/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">lrta.gov.ph ↗</a></p>
+            </article>
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Klima at estratehiya bawat quarter</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">Philippine Atmospheric, Geophysical and Astronomical Services Administration (PAGASA) — mga climate normal at opisyal na abiso sa panahon para sa Maynila.</p>
+              <p class="mt-3 text-xs leading-6"><a href="https://www.pagasa.dost.gov.ph/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">pagasa.dost.gov.ph ↗</a></p>
+            </article>
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Panahon ngayon at 7-araw na forecast</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">Open-Meteo — pinagmulan ng kasalukuyang temperatura, halumigmig, hangin, at tsansa ng ulan para sa {entity.city} na ipinapakita sa seksyong Panahon.</p>
+              <p class="mt-3 text-xs leading-6"><a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">open-meteo.com ↗</a></p>
+            </article>
+            <article class="bg-paper p-6">
+              <h3 class="text-[11px] font-bold uppercase tracking-[.16em] text-ink">Review · Oras ng pag-sync: {rating.syncedLabel}</h3>
+              <p class="mt-3 text-sm leading-6 text-ink-soft">Rating na {rating.value.toFixed(1)} / {rating.best} at {ratingCountLabel} review mula sa mga user ng Google Maps para sa {entity.fullName}, {entity.city}.</p>
+              <p class="mt-3 text-xs leading-6 text-ink-soft">{reviewSourceNote}</p>
+              <p class="mt-3 text-xs leading-6"><a href={entity.mapsShareUrl} target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">Tingnan ang lahat ng review sa Google Maps ↗</a></p>
+            </article>
+          </div>
+          <p class="mt-8 text-xs leading-6 text-ink-soft">Para sa opisyal na update at impormasyon sa turismo ng rehiyon, bisitahin ang <a href={entity.govtTourismUrl} target="_blank" rel="noopener noreferrer" class="font-semibold text-rizal-red hover:text-ink">{entity.country} / {entity.region} — opisyal na tourism portal (NPDC) ↗</a>.</p>
+        </div>
+      </section>
     </main>
 
     <footer class="bg-[#091a29] py-10 text-white">
@@ -342,11 +1195,89 @@ const faqJsonLd = {
         <div class="flex flex-col justify-between gap-8 border-b border-white/10 pb-8 md:flex-row md:items-end">
           <img src="/logo.svg" width="300" height="50" alt="Motto Stella — Bantayog ni José Rizal" class="w-[280px] rounded-sm bg-paper px-3 py-2" />
           <div class="max-w-xl text-xs leading-6 text-white/50 md:text-right">
-            <p>Mga pangunahing sanggunian: National Parks Development Committee (NPDC) at National Historical Commission of the Philippines (NHCP). Ang oras, access, transportasyon, at restaurant availability ay maaaring magbago.</p>
+            <p>Mga pangunahing sanggunian: National Parks Development Committee (NPDC), National Historical Commission of the Philippines (NHCP), Light Rail Transit Authority (LRTA), PAGASA para sa klima at abiso sa panahon, Open-Meteo para sa kasalukuyang lagay ng panahon, at Google Maps para sa rating at review ng mga user. Ang oras, access, transportasyon, panahon, rating, at restaurant availability ay maaaring magbago.</p>
           </div>
         </div>
-        <p class="pt-7 text-xs leading-6 text-white/55"><strong class="text-white/75">Hindi opisyal na website.</strong> Hindi ito pag-aari o pinapatakbo ng NPDC, NHCP, o Pamahalaan ng Pilipinas. Isa lamang itong independenteng gabay-pasyal; kumpirmahin ang pinakabagong advisory bago bumiyahe.</p>
+        <p class="pt-7 text-xs leading-6 text-white/55"><strong class="text-white/75">Hindi opisyal na website.</strong> Hindi ito pag-aari o pinapatakbo ng NPDC, NHCP, Google, o Pamahalaan ng Pilipinas. Isa lamang itong independenteng gabay-pasyal; kumpirmahin ang pinakabagong advisory bago bumiyahe.</p>
+        <p class="pt-3 text-[10px] leading-5 text-white/40">Ang rating at bilang ng review ay naka-sync mula sa mga review ng user sa Google Maps (Google Maps) · oras ng pag-sync: {rating.syncedLabel}. {reviewSourceNote} Ang Google Maps ay trademark ng Google LLC.</p>
       </div>
     </footer>
+
+    <script is:inline define:vars={{ wxUrl: weatherApiUrl }}>
+      (function () {
+        var codes = {
+          0: 'Maliwanag', 1: 'Halos maliwanag', 2: 'Bahagyang maulap', 3: 'Maulap',
+          45: 'Makapal na hamog', 48: 'Makapal na hamog',
+          51: 'Magaang ambon', 53: 'Ambon', 55: 'Makapal na ambon',
+          56: 'Malamig na ambon', 57: 'Makapal na ambon',
+          61: 'Magaang ulan', 63: 'Ulan', 65: 'Malakas na ulan',
+          66: 'Malamig na ulan', 67: 'Malakas na ulan',
+          80: 'Magaang pag-ulan', 81: 'Pag-ulan', 82: 'Malakas na pag-ulan',
+          85: 'Pag-ulan', 86: 'Malakas na pag-ulan',
+          95: 'Pagkulog at pagkidlat', 96: 'Kulog at malakas na ulan', 99: 'Kulog at malakas na ulan'
+        };
+
+        function codeText(code) {
+          return codes[code] || 'Hindi tiyak ang lagay';
+        }
+
+        function setText(id, value) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = value;
+        }
+
+        function weekdayStamp(iso) {
+          var d = new Date(iso + 'T00:00:00+08:00');
+          return d.toLocaleDateString('fil-PH', { timeZone: 'Asia/Manila', weekday: 'short' });
+        }
+
+        function dateStamp(iso) {
+          var d = new Date(iso + 'T00:00:00+08:00');
+          return d.toLocaleDateString('fil-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric' });
+        }
+
+        function renderDays(daily) {
+          var host = document.getElementById('wx-days');
+          if (!host || !daily || !daily.time) return;
+          var html = '';
+          for (var i = 0; i < daily.time.length; i++) {
+            var pop = daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : null;
+            var need = pop !== null && pop >= 50;
+            var rainLabel = (need ? 'Magdala ng payong' : 'Payong: opsyonal') + (pop !== null ? ' · ' + pop + '% ulan' : '');
+            html += '<div class="bg-paper p-4">';
+            html += '<p class="text-[10px] font-bold uppercase tracking-[.16em] text-rizal-red">' + weekdayStamp(daily.time[i]) + '</p>';
+            html += '<p class="mt-1 text-[10px] text-ink-soft">' + dateStamp(daily.time[i]) + '</p>';
+            html += '<p class="display mt-3 text-xl">' + Math.round(daily.temperature_2m_max[i]) + '° / ' + Math.round(daily.temperature_2m_min[i]) + '°</p>';
+            html += '<p class="mt-2 text-xs leading-5 text-ink-soft">' + codeText(daily.weather_code[i]) + '</p>';
+            html += '<p class="mt-2 text-[10px] font-semibold text-ink">' + rainLabel + '</p>';
+            html += '</div>';
+          }
+          host.innerHTML = html;
+        }
+
+        fetch(wxUrl)
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            var cur = data && data.current;
+            if (cur) {
+              setText('wx-now-temp', Math.round(cur.temperature_2m));
+              setText('wx-now-text', codeText(cur.weather_code));
+              setText('wx-now-feels', Math.round(cur.apparent_temperature) + '°C');
+              setText('wx-now-humidity', Math.round(cur.relative_humidity_2m) + '%');
+              setText('wx-now-wind', Math.round(cur.wind_speed_10m) + ' km/h');
+              setText('wx-now-rain', Number(cur.precipitation).toFixed(1) + ' mm');
+            }
+            renderDays(data && data.daily);
+            var pop = data && data.daily && data.daily.precipitation_probability_max ? data.daily.precipitation_probability_max[0] : null;
+            if (pop !== null) {
+              setText('wx-advice', pop >= 50 ? 'Magdala ng payong — may ' + pop + '% na tsansa ng ulan ngayon.' : 'Mababa ang tsansa ng ulan (' + pop + '%). Payong ay opsyonal; tubig at lilim ang mahalaga.');
+            }
+            setText('wx-stamp', new Date().toLocaleString('fil-PH', { timeZone: 'Asia/Manila', dateStyle: 'medium', timeStyle: 'short' }));
+            var nodata = document.getElementById('wx-nodata');
+            if (nodata) nodata.classList.add('hidden');
+          })
+          .catch(function () {});
+      })();
+    </script>
   </body>
 </html>

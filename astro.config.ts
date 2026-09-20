@@ -7,7 +7,7 @@ import { defineConfig } from 'astro/config';
  * Ito lang ang lugar kung saan kino-configure ang sariling site URL.
  * Kapag undefined, buildable pa rin ang site at hindi gagawa ng sitemap.
  */
-const site: string | undefined = undefined;
+const site: string | undefined = 'https://gabayluneta.com';
 
 export default defineConfig({
   site,

@@ -1,5 +1,47 @@
+# Mga hindi kailangang i-upload (manual deploy sa Cloudflare Workers)
+
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+dist-static/
+
+# Astro / Wrangler generated
 .astro/
 .wrangler/
+.wrangler/tmp/
+
+# Local download / scratch folder
+download/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment at secrets
+.env
+.env.*
+!.env.example
+
+# Editor at tool folders
+.codebuddy/
+.vscode/
+.idea/
+*.swp
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+
+# OS at system files
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# Pansamantalang scripts para sa verification
+tmp-*.mjs
+tmp-*.js

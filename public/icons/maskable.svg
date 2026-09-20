@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Motto Stella — Bantayog ni José Rizal">
+  <rect width="512" height="512" fill="#10263a" />
+  <g transform="translate(102.4 102.4) scale(0.6)" fill="#c89b3c">
+    <path d="M256 54 L266.58 81.44 L295.95 83.02 L273.12 101.56 L280.69 129.98 L256 114 L231.31 129.98 L238.88 101.56 L216.05 83.02 L245.42 81.44 Z" />
+    <path d="M226 372 L286 372 L277 152 L235 152 Z" />
+    <rect x="206" y="372" width="100" height="30" />
+    <rect x="184" y="402" width="144" height="36" />
+    <rect x="164" y="438" width="184" height="16" />
+  </g>
+  <g transform="translate(102.4 102.4) scale(0.6)" fill="#f4f0e6" opacity="0.9">
+    <circle cx="146" cy="250" r="9" />
+    <circle cx="366" cy="250" r="9" />
+    <circle cx="256" cy="196" r="7" />
+  </g>
+</svg>

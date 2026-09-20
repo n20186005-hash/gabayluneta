@@ -10,8 +10,12 @@
 
 ## Supporting current listings / visitor planning
 - Google Maps destination supplied by the requester: https://maps.app.goo.gl/FoCBsLYeuxtmVA8W6
-- Tripadvisor / Google travel listings consulted for current rating context.
+- Google Maps user reviews used for the visitor rating shown on the page: **4.6 / 5**, **3,201 reviews**, synced **September 2026**. Shown on-page only (not included in JSON-LD); source, sync time, and link to the full Google Maps reviews are stated next to the rating block, in the sources section, and in the footer.
 - Current local business listings consulted for Café Ilang-Ilang, Estoria Manila, Ilustrado, and Manam (SM City Manila).
+
+## Weather and climate
+- PAGASA (Philippine Atmospheric, Geophysical and Astronomical Services Administration) — climate normals and official weather advisories for Manila: https://www.pagasa.dost.gov.ph/
+- Open-Meteo — current conditions and 7-day forecast data shown in the weather section: https://open-meteo.com/ (fetched server-side, cached 15 minutes; page shows only the source name and last-updated time).
 
 ## Local image files
 - `public/images/rizal-monument-flags.jpg`
